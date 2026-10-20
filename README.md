@@ -20,3 +20,12 @@ Vite serves the frontend at `http://localhost:5173`; Express serves the API at `
 - `GET /api/health` checks the Express server; `GET /api/health/db` checks Supabase access.
 
 Supabase credentials are read by the server only. Keep `.env` private; it is excluded by `.gitignore`.
+## Separate Render services
+
+For a separately deployed frontend, set these service environment variables before deploying:
+
+- Frontend service: `VITE_API_BASE_URL=https://nexgen-linkpulse.onrender.com`
+- Backend service: `APP_BASE_URL=https://nexgen-linkpulse.onrender.com`
+- Backend service: `FRONTEND_ORIGINS=https://linkpulse-fronend.onrender.com`
+
+`FRONTEND_ORIGINS` accepts a comma-separated list of exact origins. The backend allows the local Vite origin by default for development and rejects browser origins that are not listed.

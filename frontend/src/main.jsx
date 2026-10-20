@@ -2,24 +2,45 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-async function apiRequest(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
-  });
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
-  let data;
+async function apiRequest(path, options = {}) {
+  let response;
   try {
-    data = await response.json();
+    response = await fetch(new URL(path, API_BASE_URL), {
+      ...options,
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...options.headers,
+      },
+    });
   } catch {
-    data = null;
+    throw new Error('Could not reach the LinkPulse API. Check its URL and whether the backend allows this frontend origin.');
   }
 
+  const contentType = response.headers.get('content-type') || '';
+  let data = null;
+  if (contentType.toLowerCase().includes('application/json')) {
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('The LinkPulse API returned invalid JSON.');
+    }
+  }
+
+  const isJson = contentType.toLowerCase().includes('application/json');
   if (!response.ok) {
-    throw new Error(data?.error || 'Something went wrong. Please try again.');
+    if (data?.error) throw new Error(data.error);
+    if (!isJson) {
+      throw new Error(`The LinkPulse API returned a non-JSON HTTP ${response.status} response. Check VITE_API_BASE_URL points to the backend.`);
+    }
+    throw new Error(`The LinkPulse API request failed (${response.status}).`);
+  }
+  if (!isJson) {
+    throw new Error('The LinkPulse API returned a non-JSON response. Check VITE_API_BASE_URL points to the backend.');
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('The LinkPulse API returned an empty or invalid response.');
   }
 
   return data;
@@ -86,7 +107,7 @@ function formatCount(value) {
 }
 
 function shortUrlForCode(code) {
-  return new URL(`/r/${encodeURIComponent(code)}`, window.location.origin).toString();
+  return new URL(`/r/${encodeURIComponent(code)}`, API_BASE_URL).toString();
 }
 
 function App() {
@@ -112,7 +133,11 @@ function App() {
         apiRequest('/api/links'),
         apiRequest('/api/analytics'),
       ]);
-      setLinks(Array.isArray(linkData.links) ? linkData.links : []);
+      if (!Array.isArray(linkData.links)) throw new Error('The LinkPulse API returned an unexpected links response.');
+      setLinks(linkData.links);
+      if (!Number.isFinite(analyticsData.totalLinks) || !Number.isFinite(analyticsData.totalClicks)) {
+        throw new Error('The LinkPulse API returned unexpected analytics data.');
+      }
       setAnalytics(analyticsData);
     } catch (error) {
       setDashboardError(error.message);
@@ -143,9 +168,12 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ destinationUrl: normalizedUrl }),
       });
+      if (!result.link || typeof result.link.code !== 'string' || !result.link.code) {
+        throw new Error('The LinkPulse API did not return the created link.');
+      }
       setCreated({
         ...result,
-        shortUrl: shortUrlForCode(result.link.code),
+        shortUrl: result.shortUrl || shortUrlForCode(result.link.code),
       });
       setDestinationUrl('');
       await loadDashboard(true);

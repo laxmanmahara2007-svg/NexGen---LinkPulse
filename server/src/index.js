@@ -10,6 +10,28 @@ const linkColumns = 'code,destination_url,created_at,click_count';
 const pageSize = 1000;
 const maxCodeAttempts = 5;
 const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}`;
+const allowedFrontendOrigins = new Set(
+  (process.env.FRONTEND_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+app.use((request, response, next) => {
+  const origin = request.get('Origin');
+  if (!origin) return next();
+  if (!allowedFrontendOrigins.has(origin)) {
+    return response.status(403).json({ error: 'Origin is not allowed.' });
+  }
+
+  response.setHeader('Access-Control-Allow-Origin', origin);
+  response.vary('Origin');
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Max-Age', '86400');
+  if (request.method === 'OPTIONS') return response.sendStatus(204);
+  return next();
+});
 
 app.use(express.json({ limit: '16kb' }));
 
